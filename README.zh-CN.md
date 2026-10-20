@@ -21,7 +21,7 @@
 # 在终端替换为自己的电视地址；首次连接需在电视确认授权
 export TV_ADDRESS=192.168.1.50:5555
 adb connect "$TV_ADDRESS"
-adb -s "$TV_ADDRESS" install -r tv-vibehack-xiaomi-v2.3-xiaomi.1.apk
+adb -s "$TV_ADDRESS" install -r tv-vibehack-xiaomi-v2.3-xiaomi.2.apk
 adb -s "$TV_ADDRESS" shell cmd package set-home-activity --user 0 com.gathin.tvhome/.MainActivity
 adb -s "$TV_ADDRESS" shell input keyevent 3
 ```
@@ -82,7 +82,9 @@ TV_ADDRESS="$TV_ADDRESS" sh tools/restore-xiaomi-home.sh
 - 主页键：进入桌面。
 - 向下：展开全部应用。
 - 长按应用：设为常用或打开应用信息。
-- 右上方：信号源、网络、设置。
+- 右上方：信号源、网络、齿轮设置菜单。点击齿轮 → 桌面设置或电视设置。
+- 桌面设置顶部“开机直达首个应用”：默认关闭，开启后下次整机重启自动打开第一个可用常用应用，随常用位置调整。必须先设为默认桌面。每次整机启动最多一次；待机唤醒、返回主页或进程重启不会再次跳转。应用打不开时仍保留桌面，不循环重试。
+- 无需开启无障碍或新增常驻后台服务。固件若不提供系统启动计数，自动跳转会安全跳过。
 - 常用位置支持随显示列数调整；默认四个位置。
 
 ## 精简资料

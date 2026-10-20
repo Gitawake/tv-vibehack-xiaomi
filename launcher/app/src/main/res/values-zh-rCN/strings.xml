@@ -34,4 +34,6 @@
     <string name="cant_open">无法打开 %1$s</string>
     <string name="date_format">M月d日 EEEE</string>
     <string name="dream_name">时钟</string>
+    <string name="boot_launch_title">开机直达首个应用</string>
+    <string name="boot_launch_hint">每次重启后自动打开第一个常用应用，下次重启生效。按主页键仍可返回桌面。需先设为默认桌面；待机唤醒不重复打开。</string>
 </resources>
