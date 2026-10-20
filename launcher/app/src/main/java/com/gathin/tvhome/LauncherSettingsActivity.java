@@ -31,15 +31,6 @@ public final class LauncherSettingsActivity extends Activity {
         animations = config.animations;
         advancedEffects = config.animations && config.advancedEffects;
 
-        android.widget.Switch bootSwitch = findViewById(R.id.bootLaunchChoice);
-        SharedPreferences bootPrefs = getSharedPreferences("boot_launch", MODE_PRIVATE);
-        bootSwitch.setChecked(bootPrefs.getBoolean("enabled", false));
-        bootSwitch.setOnCheckedChangeListener((button, checked) -> {
-            int boot = Settings.Global.getInt(getContentResolver(), Settings.Global.BOOT_COUNT, -1);
-            // Enabling applies next boot, not while the owner is adjusting settings.
-            bootPrefs.edit().putBoolean("enabled", checked).putInt("handled_boot", boot).apply();
-        });
-
         int[] ids = {R.id.columns4, R.id.columns5, R.id.columns6, R.id.columns7};
         for (int i = 0; i < ids.length; i++) {
             final int value = i + 4;
@@ -92,7 +83,7 @@ public final class LauncherSettingsActivity extends Activity {
         findViewById(R.id.tvSettingsChoice).setOnClickListener(v ->
                 open(new Intent(Settings.ACTION_SETTINGS)));
         refresh();
-        bootSwitch.requestFocus();
+        columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();
     }
 
     private void setAdvanced(boolean enabled) {

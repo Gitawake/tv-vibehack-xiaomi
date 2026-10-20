@@ -372,14 +372,6 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
     }
 
     /** Opens the tile's activity by explicit component, with no extras: a card can name nothing else. */
-    boolean hasFirstApp() {
-        return !items.isEmpty() && items.get(0).kind != Entry.HOME_SETTINGS;
-    }
-
-    void openFirstApp() {
-        if (hasFirstApp()) launch(items.get(0));
-    }
-
     private void launch(Entry e) {
         if (e.kind == Entry.HOME_SETTINGS) {
             ctx.startActivity(new Intent(ctx, HomeSettingsActivity.class)

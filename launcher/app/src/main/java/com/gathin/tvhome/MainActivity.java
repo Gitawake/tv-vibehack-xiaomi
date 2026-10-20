@@ -329,7 +329,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
             return true;
         });
-        btnSettings.setOnClickListener(v -> showSettingsMenu());
+        btnSettings.setOnClickListener(v -> open(systemIntent(Settings.ACTION_SETTINGS)));
         btnSettings.setOnLongClickListener(v -> {
             showSettingsMenu();
             return true;
@@ -456,7 +456,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         updateWifiLabel();
         updateInputsButton();
         sky.update();
-        grid.post(this::maybeOpenFirstAppOnBoot);
         handler.postDelayed(minuteTick, MINUTE_MS);
         if (festive && diya != null) {
             diya.start();
@@ -466,21 +465,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 handler.postDelayed(this::playPetalShower, 450);
             }
         }
-    }
-
-    private void maybeOpenFirstAppOnBoot() {
-        if (!hasWindowFocus() || isFinishing() || adapter == null) return;
-        android.content.SharedPreferences prefs = getSharedPreferences("boot_launch", MODE_PRIVATE);
-        int boot = Settings.Global.getInt(getContentResolver(), Settings.Global.BOOT_COUNT, -1);
-        android.content.pm.ResolveInfo home = getPackageManager().resolveActivity(
-                new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0);
-        boolean defaultHome = home != null && home.activityInfo != null
-                && getPackageName().equals(home.activityInfo.packageName);
-        if (!BootLaunchPolicy.shouldLaunch(prefs.getBoolean("enabled", false), defaultHome,
-                boot, prefs.getInt("handled_boot", -1), adapter.hasFirstApp())) return;
-        // Persist before opening another app: HOME, a crash, or a process restart must not loop.
-        if (!prefs.edit().putInt("handled_boot", boot).commit()) return;
-        adapter.openFirstApp();
     }
 
     @Override
@@ -574,10 +558,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            showCardPrompt();
-            if (grid != null) grid.post(this::maybeOpenFirstAppOnBoot);
-        }
+        if (hasFocus) showCardPrompt();
     }
 
     @Override
@@ -1242,7 +1223,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     // ---- launcher settings and module cards -------------------------------------------------------
 
-    /** Both click and hold expose launcher and TV settings from the gear. */
+    /** Keep a normal Settings click for the TV; the launcher's choices live behind hold OK. */
     private void showSettingsMenu() {
         View anchor = findViewById(R.id.btnSettings);
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
@@ -1250,8 +1231,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         PopupWindow popup = glassPopup(panel, (int) (200 * density));
         addSettingsMenuRow(rows, popup, R.string.launcher_settings, () -> startActivityForResult(
                 new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
-        addSettingsMenuRow(rows, popup, R.string.tv_settings,
-                () -> open(systemIntent(Settings.ACTION_SETTINGS)));
         if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         popup.setWidth(Math.max((int) (200 * density), panel.getMeasuredWidth()));
