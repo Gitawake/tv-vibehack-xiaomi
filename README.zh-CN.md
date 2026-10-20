@@ -2,6 +2,32 @@
 
 基于 [Gathin23/tv-vibehack](https://github.com/Gathin23/tv-vibehack) 的 Android TV 轻量桌面适配分支。保留上游历史、作者署名与 MIT 许可证，字体授权见上游 LICENSE。不是小米官方产品。
 
+## 项目范围：只安装桌面
+
+本分支主要使用并改造上游的 `launcher/`，发布的 APK 仅为桌面。**安装 APK 不会自动精简系统、停用广告包、修改 DNS 或删除小米应用。** 上游的 ADB 工具和精简示例保留供参考，未作为本分支安装流程执行。
+
+现场曾通过 ADB 单独停用少数广告、统计组件，这与桌面独立，不包含在 APK 中；详见适配记录。小米原桌面和核心服务继续保留。
+
+## 下载 APK 手动安装
+
+前往 [Releases](https://github.com/Gitawake/tv-vibehack-xiaomi/releases/latest)，下载名称以 `.apk` 结尾的文件（不是 Source code 压缩包）。Android 8.0 及以上可尝试，实机验证范围为 Android 9 的 MiTV-NSOP0。
+
+1. 用 U 盘、局域网传文件工具或 ADB 将 APK 传到电视。
+2. 在电视文件管理器中打开 APK，按系统提示允许该来源安装应用，再完成安装。部分小米固件可能限制 U 盘安装，可改用下面的 ADB 方法。
+3. 打开新桌面试用。若系统支持，在“默认应用 → 主屏幕/桌面”中选择它。不同固件的菜单可能不同；安装本身不保证主页键已切换。
+4. 小米固件没有默认桌面入口时，使用下方 ADB 命令设置。新桌面仍可读取原应用、打开应用中心，不会清除它们的数据。
+
+```sh
+# 在终端替换为自己的电视地址；首次连接需在电视确认授权
+export TV_ADDRESS=192.168.1.50:5555
+adb connect "$TV_ADDRESS"
+adb -s "$TV_ADDRESS" install -r tv-vibehack-xiaomi-v2.3-xiaomi.1.apk
+adb -s "$TV_ADDRESS" shell cmd package set-home-activity --user 0 com.gathin.tvhome/.MainActivity
+adb -s "$TV_ADDRESS" shell input keyevent 3
+```
+
+如需恢复小米桌面，先按后文“安装和恢复”执行恢复操作，再卸载此应用。发布包使用固定私钥签名；后续同签名、高版本号的发布包可覆盖升级。此前本地调试版或上游 APK 可能签名不同，出现签名冲突时需先切回原桌面、卸载旧版再安装，卸载会清除本桌面的偏好设置。
+
 ## 本分支改动
 
 - 统一显示标准电视应用、普通 Android 应用及小米应用中心，按组件去重。
@@ -28,7 +54,9 @@ cd launcher
 ```
 
 输出：`launcher/app/build/outputs/apk/release/app-release.apk`。
-默认使用本机 debug key 签名。不同机器构建的签名可能不同，升级安装时需要同一签名；不要公开私钥。自行管理发布签名时请通过本地配置或 CI secrets 注入。
+本地未设置发布签名变量时使用本机 debug key。GitHub 发布工作流从仓库 Secret `ANDROID_SIGNING_JSON` 读取固定签名，并且只在受信任分支手动触发，不在外部 PR 中使用。
+
+发布流程和密钥字段见 [发布维护说明](docs/releasing.md)。密钥不能放进源码、构建产物或 Release 附件。
 
 ## 安装和恢复
 

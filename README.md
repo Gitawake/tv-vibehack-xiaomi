@@ -1,3 +1,5 @@
+> **Download the launcher APK:** [GitHub Releases](https://github.com/Gitawake/tv-vibehack-xiaomi/releases/latest). This fork packages the launcher only; installing the APK does not run any debloat scripts. See [手动安装与范围说明](README.zh-CN.md).
+
 > **Xiaomi adaptation:** This fork adds Xiaomi app discovery, automatic edge-filled artwork, native input names, and remote-editable favourites. See [中文说明](README.zh-CN.md). Original project and license: [Gathin23/tv-vibehack](https://github.com/Gathin23/tv-vibehack).
 
 <p align="center">
