@@ -222,6 +222,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         PackageManager pm = ctx.getPackageManager();
         Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
         List<ResolveInfo> found = new ArrayList<>(pm.queryIntentActivities(probe, 0));
+        Set<String> leanback = new HashSet<>();
+        for (ResolveInfo ri : found) if (ri.activityInfo != null) leanback.add(ri.activityInfo.packageName);
         // Keep Xiaomi phone-style and vendor store entries on the same TV grid.
         found.addAll(pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LAUNCHER), 0));
@@ -229,7 +231,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 .addCategory("android.intent.category.APPSTORE_LAUNCHER"), 0));
         Set<String> tvPackages = new HashSet<>();
         for (ResolveInfo ri : found) if (ri.activityInfo != null) tvPackages.add(ri.activityInfo.packageName);
-        leanbackPackages = tvPackages;
+        leanbackPackages = leanback;
         Set<String> added = LibraryApps.load(ctx);
         Set<String> removed = LibraryApps.loadRemoved(ctx);
         Set<String> seenComponents = new HashSet<>();
@@ -465,41 +467,14 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         }
         h.card.setOnClickListener(v -> launch(e));
         h.card.setOnLongClickListener(v -> {
-            new android.app.AlertDialog.Builder(ctx)
-                    .setTitle(e.label)
-                    .setItems(new String[] {"设为常用", "应用信息"}, (dialog, which) -> {
-                        if (which == 0) chooseDockSlot(e);
-                        else {
-                            Intent info = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    Uri.parse("package:" + e.pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            try { ctx.startActivity(info); } catch (ActivityNotFoundException ignored) { }
-                        }
-                    }).setNegativeButton("取消", null).show();
+            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + e.pkg));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                ctx.startActivity(i);
+            } catch (ActivityNotFoundException ignored) {
+            }
             return true;
         });
-    }
-
-    private void chooseDockSlot(Entry chosen) {
-        List<Entry> current = new ArrayList<>();
-        for (int i = 0; i < Math.min(dockSize, items.size()); i++) current.add(items.get(i));
-        String[] titles = new String[dockSize];
-        for (int i = 0; i < dockSize; i++) titles[i] = "第 " + (i + 1) + " 个位置 · "
-                + (i < current.size() ? current.get(i).label : "空位");
-        new android.app.AlertDialog.Builder(ctx).setTitle("选择常用位置")
-                .setItems(titles, (dialog, slot) -> {
-                    List<String> pins = new ArrayList<>();
-                    for (Entry item : current) pins.add(item.kind == Entry.EMPTY ? "" : item.pkg);
-                    while (pins.size() < dockSize) pins.add("");
-                    int previous = pins.indexOf(chosen.pkg);
-                    String replaced = pins.get(slot);
-                    pins.set(slot, chosen.pkg);
-                    if (previous >= 0 && previous != slot) pins.set(previous, replaced);
-                    ctx.getSharedPreferences("dock_pins", Context.MODE_PRIVATE).edit()
-                            .putString("apps", new org.json.JSONArray(pins).toString()).apply();
-                    // A newly selected favourite must take precedence over a previously saved full-grid order.
-                    Order.file(ctx).delete();
-                    if (ctx instanceof Activity) ((Activity) ctx).recreate();
-                }).setNegativeButton("取消", null).show();
     }
 
     /** Opens the tile's activity by explicit component, with no extras: a card can name nothing else. */
