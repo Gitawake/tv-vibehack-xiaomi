@@ -1,3 +1,5 @@
+> **Xiaomi adaptation:** This fork adds Xiaomi app discovery, automatic edge-filled artwork, native input names, and remote-editable favourites. See [中文说明](README.zh-CN.md). Original project and license: [Gathin23/tv-vibehack](https://github.com/Gathin23/tv-vibehack).
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="https://raw.githubusercontent.com/Gathin23/cleanyourtv/main/docs/banner.png" alt="CleanYourTV. Your TV, minus the ads." width="800"></a>
 </p>
