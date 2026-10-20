@@ -147,6 +147,15 @@ final class Config {
         // current theme without clearing choices from an older launcher version.
         SharedPreferences choices = ctx.getSharedPreferences(SETTINGS_NAME, Context.MODE_PRIVATE);
         syncThemeChoices(choices, dir, file);
+        String pinned = ctx.getSharedPreferences("dock_pins", Context.MODE_PRIVATE).getString("apps", null);
+        if (pinned != null) {
+            try {
+                org.json.JSONArray saved = new org.json.JSONArray(pinned);
+                List<String> selected = new ArrayList<>();
+                for (int i = 0; i < saved.length(); i++) selected.add(saved.getString(i));
+                if (!selected.isEmpty()) dock = selected;
+            } catch (org.json.JSONException ignored) { }
+        }
         int chosenColumns = choices.getInt("columns", columns);
         if (chosenColumns >= 4 && chosenColumns <= 7) columns = chosenColumns;
         animations = choices.getBoolean("animations", animations);

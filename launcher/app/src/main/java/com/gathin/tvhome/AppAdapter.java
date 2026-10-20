@@ -14,6 +14,7 @@ import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
@@ -79,7 +80,9 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             this.banner = banner;
             this.icon = icon;
             this.name = caption == null ? label : label + " \u00B7 " + caption;
-            this.ambient = accent;
+            // Stable colour for entries with no drawable artwork.
+            this.ambient = accent != 0 ? accent : banner == null
+                    ? Color.HSVToColor(new float[] {(component.getPackageName().hashCode() & 0x7fffffff) % 360, 0.55f, 0.75f}) : 0;
         }
     }
 
@@ -144,7 +147,13 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
     void reload(List<Cards.Card> cards) {
         PackageManager pm = ctx.getPackageManager();
         Intent probe = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER);
-        List<ResolveInfo> found = pm.queryIntentActivities(probe, 0);
+        List<ResolveInfo> found = new ArrayList<>(pm.queryIntentActivities(probe, 0));
+        // Xiaomi China firmware has phone-style and vendor-only app entries.
+        found.addAll(pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER), 0));
+        found.addAll(pm.queryIntentActivities(new Intent(Intent.ACTION_MAIN)
+                .addCategory("android.intent.category.APPSTORE_LAUNCHER"), 0));
+        Set<String> seenComponents = new HashSet<>();
         Map<String, Cards.Card> cardByPkg = new HashMap<>();
         for (Cards.Card c : cards) cardByPkg.put(c.pkg, c);
         List<Entry> fresh = new ArrayList<>();
@@ -153,10 +162,14 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(ctx.getPackageName()) || hidden.contains(pkg)) continue;
             ComponentName component = new ComponentName(pkg, ri.activityInfo.name);
+            if (!seenComponents.add(component.flattenToString())) continue;
             Cards.Card card = cardByPkg.get(pkg);
             if (card != null && !card.component.equals(component)) continue;   // the card stands in for this tile
             Drawable banner = loadBanner(pm, ri);
             Drawable icon = ri.loadIcon(pm);
+            if (banner == null) {
+                banner = landscapeArtwork(icon);
+            }
             if (card != null) {
                 fresh.add(new Entry(Entry.CARD, card.label, component, banner, icon, card.caption, card.accent));
             } else {
@@ -197,11 +210,79 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
                 Resources resources = pm.getResourcesForApplication(ri.activityInfo.applicationInfo);
                 // Keep at least xhdpi detail rather than downsampling artwork before the focus zoom.
                 int density = Math.max(DisplayMetrics.DENSITY_XHIGH, ctx.getResources().getDisplayMetrics().densityDpi);
-                return resources.getDrawableForDensity(id, density, null);
+                return usableBanner(resources.getDrawableForDensity(id, density, null));
             } catch (PackageManager.NameNotFoundException | Resources.NotFoundException ignored) {
             }
         }
-        return ri.activityInfo.loadBanner(pm);
+        return usableBanner(ri.activityInfo.loadBanner(pm));
+    }
+
+    /** Produce wide artwork from any app icon without cutting off its logo. */
+    private Drawable landscapeArtwork(Drawable icon) {
+        Bitmap result = Bitmap.createBitmap(480, 270, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(result);
+        canvas.drawColor(0xFF253149);
+        if (icon != null) {
+            int w = Math.max(1, icon.getIntrinsicWidth()), h = Math.max(1, icon.getIntrinsicHeight());
+            float scale = Math.min(480f / w, 270f / h);
+            int iw = Math.max(1, Math.round(w * scale)), ih = Math.max(1, Math.round(h * scale));
+            Bitmap source = Bitmap.createBitmap(iw, ih, Bitmap.Config.ARGB_8888);
+            Canvas image = new Canvas(source);
+            Rect old = new Rect(icon.getBounds());
+            icon.setBounds(0, 0, iw, ih);
+            icon.draw(image);
+            icon.setBounds(old);
+            // Composite transparent icon borders over their sampled opaque edge colour.
+            long red = 0, green = 0, blue = 0, weight = 0;
+            for (int y = 0; y < ih; y++) for (int x : new int[] {0, iw - 1}) {
+                int pixel = source.getPixel(x, y), alpha = Color.alpha(pixel);
+                red += (long) Color.red(pixel) * alpha;
+                green += (long) Color.green(pixel) * alpha;
+                blue += (long) Color.blue(pixel) * alpha;
+                weight += alpha;
+            }
+            int base = weight == 0 ? 0xFF253149 : Color.rgb((int) (red / weight),
+                    (int) (green / weight), (int) (blue / weight));
+            Bitmap opaque = Bitmap.createBitmap(iw, ih, Bitmap.Config.ARGB_8888);
+            Canvas composed = new Canvas(opaque);
+            composed.drawColor(base);
+            composed.drawBitmap(source, 0, 0, null);
+            source.recycle();
+            int left = (480 - iw) / 2, top = (270 - ih) / 2;
+            canvas.drawColor(base);
+            android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+            // Extend each edge pixel horizontally; no blur, tint, or crop of the original image.
+            if (left > 0) canvas.drawBitmap(opaque, new Rect(0, 0, 1, ih),
+                    new Rect(0, top, left, top + ih), paint);
+            if (left + iw < 480) canvas.drawBitmap(opaque, new Rect(iw - 1, 0, iw, ih),
+                    new Rect(left + iw, top, 480, top + ih), paint);
+            canvas.drawBitmap(opaque, left, top, paint);
+            opaque.recycle();
+        }
+        return new android.graphics.drawable.BitmapDrawable(ctx.getResources(), result);
+    }
+
+    private static Drawable usableBanner(Drawable banner) {
+        if (banner == null) return null;
+        int w = banner.getIntrinsicWidth(), h = banner.getIntrinsicHeight();
+        // Square icons advertised as banners and tiny bitmaps look poor on a wide TV tile.
+        if (w < 240 || h < 100 || w < h * 1.45f || w > h * 2.15f) return null;
+        return banner;
+    }
+
+    private Drawable tileBackground(Entry entry) {
+        if (entry.ambient == 0) entry.ambient = vividColor(entry.banner != null ? entry.banner : entry.icon);
+        float[] hsv = new float[3];
+        Color.colorToHSV(entry.ambient, hsv);
+        hsv[1] = Math.min(hsv[1], 0.65f);
+        hsv[2] = 0.28f;
+        int top = Color.HSVToColor(hsv);
+        hsv[2] = 0.12f;
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[] {top, Color.HSVToColor(hsv)});
+        bg.setCornerRadius(16f * ctx.getResources().getDisplayMetrics().density);
+        bg.setStroke(1, 0x18FFFFFF);
+        return bg;
     }
 
     @NonNull
@@ -238,7 +319,9 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         h.card.setTranslationZ(focused && advancedEffects ? 8f * ctx.getResources().getDisplayMetrics().density : 0f);
         h.banner.setScaleX(focused && advancedEffects ? 1.035f : 1f);
         h.banner.setScaleY(focused && advancedEffects ? 1.035f : 1f);
+        h.card.setBackground(tileBackground(e));
         if (e.banner != null) {
+            h.banner.setScaleType(ImageView.ScaleType.FIT_CENTER);
             h.banner.setImageDrawable(e.banner);
             h.banner.setVisibility(View.VISIBLE);
             h.icon.setVisibility(View.GONE);
@@ -253,14 +336,39 @@ public class AppAdapter extends RecyclerView.Adapter<AppAdapter.Holder> {
         }
         h.card.setOnClickListener(v -> launch(e));
         h.card.setOnLongClickListener(v -> {
-            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + e.pkg));
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                ctx.startActivity(i);
-            } catch (ActivityNotFoundException ignored) {
-            }
+            new android.app.AlertDialog.Builder(ctx)
+                    .setTitle(e.label)
+                    .setItems(new String[] {"设为常用", "应用信息"}, (dialog, which) -> {
+                        if (which == 0) chooseDockSlot(e);
+                        else {
+                            Intent info = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:" + e.pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            try { ctx.startActivity(info); } catch (ActivityNotFoundException ignored) { }
+                        }
+                    }).setNegativeButton("取消", null).show();
             return true;
         });
+    }
+
+    private void chooseDockSlot(Entry chosen) {
+        List<Entry> current = new ArrayList<>();
+        for (int i = 0; i < Math.min(dockSize, items.size()); i++) current.add(items.get(i));
+        String[] titles = new String[dockSize];
+        for (int i = 0; i < dockSize; i++) titles[i] = "第 " + (i + 1) + " 个位置 · "
+                + (i < current.size() ? current.get(i).label : "空位");
+        new android.app.AlertDialog.Builder(ctx).setTitle("选择常用位置")
+                .setItems(titles, (dialog, slot) -> {
+                    List<String> pins = new ArrayList<>();
+                    for (Entry item : current) pins.add(item.pkg);
+                    while (pins.size() < dockSize) pins.add("");
+                    int previous = pins.indexOf(chosen.pkg);
+                    String replaced = pins.get(slot);
+                    pins.set(slot, chosen.pkg);
+                    if (previous >= 0 && previous != slot) pins.set(previous, replaced);
+                    ctx.getSharedPreferences("dock_pins", Context.MODE_PRIVATE).edit()
+                            .putString("apps", new org.json.JSONArray(pins).toString()).apply();
+                    if (ctx instanceof Activity) ((Activity) ctx).recreate();
+                }).setNegativeButton("取消", null).show();
     }
 
     /** Opens the tile's activity by explicit component, with no extras: a card can name nothing else. */

@@ -1068,6 +1068,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         open(new Intent(inputAction).setDataAndType(uri, "vnd.android.cursor.item/channel"));
     }
 
+    private String inputLabel(TvInputInfo info) {
+        CharSequence custom = info.loadCustomLabel(this);
+        if (custom != null && !custom.toString().trim().isEmpty()) return custom.toString().trim();
+        // Novatek's service labels are implementation names; Xiaomi's home uses physical port names.
+        String pkg = info.getServiceInfo().packageName;
+        if (pkg.equals("com.novatek.hdmi1tvinput")) return "HDMI1";
+        if (pkg.equals("com.novatek.hdmi2tvinput")) return "HDMI2";
+        if (pkg.equals("com.novatek.hdmi3tvinput")) return "HDMI3";
+        if (pkg.equals("com.novatek.cvbstvinput")) return "AV";
+        CharSequence label = info.loadLabel(this);
+        return label == null ? info.getId() : label.toString();
+    }
+
     /** Dropdown menu under the Inputs pill: HDMI ports (with connection state), AV and Live TV. */
     private void showInputs() {
         View anchor = findViewById(R.id.btnInputs);
@@ -1088,7 +1101,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             Collections.sort(inputs, (a, b) -> {
                 boolean ha = a.getType() == TvInputInfo.TYPE_HDMI, hb = b.getType() == TvInputInfo.TYPE_HDMI;
                 if (ha != hb) return ha ? -1 : 1;
-                return String.valueOf(a.loadLabel(this)).compareToIgnoreCase(String.valueOf(b.loadLabel(this)));
+                return inputLabel(a).compareToIgnoreCase(inputLabel(b));
             });
             // Some TVs (Sony) report every HDMI port as connected whether or not anything is plugged in,
             // so drop the HDMI status then. A TV with every port really in use loses it too.
@@ -1111,10 +1124,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     }
                 }
                 if (!info.isPassthroughInput()) continue;
-                CharSequence l = info.loadLabel(this);
-                String label = l == null ? info.getId() : l.toString();
+                String label = inputLabel(info);
                 boolean hdmi = info.getType() == TvInputInfo.TYPE_HDMI;
-                if (hdmi && !label.toUpperCase(Locale.ROOT).contains("HDMI")) label = "HDMI " + label;
                 final String id = info.getId();
                 int state = hdmi && hdmiStateBogus ? -1 : tim.getInputState(id);
                 if (!hdmi && rows.getChildCount() > 0 && !sawNonHdmi) addSeparator(rows);
