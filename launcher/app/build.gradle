@@ -10,8 +10,8 @@ android {
         applicationId 'com.gathin.tvhome'
         minSdk 26
         targetSdk 34
-        versionCode 7
-        versionName '2.3-xiaomi.3'
+        versionCode 8
+        versionName '2.4-xiaomi.1'
     }
 
     signingConfigs {
