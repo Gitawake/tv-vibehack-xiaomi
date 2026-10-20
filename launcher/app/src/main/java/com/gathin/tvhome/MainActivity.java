@@ -169,6 +169,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** Tile order when reorder mode started, to save only when something moved. */
     private List<String> orderAtStart;
     private View btnReorder;
+    private boolean showReorderWhenIdle;
     /** dock_apps as loaded (config.xml or a theme): a saved Order only applies while these are unchanged. */
     private List<String> dockApps;
     /** fill_dock false: the dock can have empty slots, which reorder mode leaves out and restores afterwards. */
@@ -433,7 +434,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnSettings.setOnClickListener(v -> open(systemIntent(Settings.ACTION_SETTINGS)));
         btnReorder = findViewById(R.id.btnReorder);
         btnReorder.setOnClickListener(v -> toggleReorder());
-        btnReorder.setVisibility(cfg.reorderButton ? View.VISIBLE : View.GONE);
+        showReorderWhenIdle = cfg.reorderButton;
+        btnReorder.setVisibility(showReorderWhenIdle ? View.VISIBLE : View.GONE);
         btnSettings.setOnLongClickListener(v -> {
             showSettingsMenu();
             return true;
@@ -801,6 +803,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         reordering = true;
         orderAtStart = adapter.movableKeys();
         glass.setAccent(REORDER_ACCENT);
+        btnReorder.setVisibility(View.VISIBLE);
         btnReorder.setActivated(true);
         focusTile(Math.max(0, Math.min(lastFocused, adapter.movableCount() - 1)));
         Toast.makeText(this, R.string.reorder_hint, Toast.LENGTH_LONG).show();
@@ -836,6 +839,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         adapter.setReordering(false);
         glass.setAccent(festive ? festival.accentColor() : 0);
         btnReorder.setActivated(false);
+        if (!showReorderWhenIdle) {
+            if (btnReorder.hasFocus()) findViewById(R.id.btnSettings).requestFocus();
+            btnReorder.setVisibility(View.GONE);
+        }
         List<String> keys = adapter.movableKeys();
         List<String> before = orderAtStart;
         orderAtStart = null;
