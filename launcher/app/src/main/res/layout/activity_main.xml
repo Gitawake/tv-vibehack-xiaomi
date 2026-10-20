@@ -33,7 +33,10 @@
         android:includeFontPadding="false"
         android:singleLine="true" />
 
+    <!-- Focused header buttons may draw into the outer content padding. -->
     <LinearLayout
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
