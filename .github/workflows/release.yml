@@ -1,0 +1,103 @@
+name: Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (must match app version)
+        required: true
+        default: v2.3-xiaomi.1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/xiaomi-android9'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-35 build-tools;35.0.0
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Validate release version
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          tag = os.environ['RELEASE_TAG']
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+-xiaomi\.[0-9]+', tag):
+              raise SystemExit('Invalid release tag')
+          build = Path('launcher/app/build.gradle').read_text()
+          version = re.search(r"versionName '([^']+)'", build).group(1)
+          if tag != 'v' + version:
+              raise SystemExit('Tag must match versionName in app/build.gradle')
+          PY
+      - name: Restore private release signing key
+        env:
+          SIGNING_JSON: ${{ secrets.ANDROID_SIGNING_JSON }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os
+          from pathlib import Path
+          raw = os.environ.get('SIGNING_JSON', '')
+          if not raw:
+              raise SystemExit('Configure repository secret ANDROID_SIGNING_JSON first')
+          cfg = json.loads(raw)
+          key = Path(os.environ['RUNNER_TEMP']) / 'tv-release.p12'
+          key.write_bytes(base64.b64decode(cfg['keystore'], validate=True))
+          key.chmod(0o600)
+          values = {
+              'TV_RELEASE_STORE_FILE': str(key),
+              'TV_RELEASE_STORE_PASSWORD': cfg['storePassword'],
+              'TV_RELEASE_KEY_ALIAS': cfg['alias'],
+              'TV_RELEASE_KEY_PASSWORD': cfg['keyPassword'],
+          }
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              for name, value in values.items():
+                  if '\n' in value or '\r' in value:
+                      raise SystemExit('Signing fields must be single-line values')
+                  print('::add-mask::' + value)
+                  env.write(name + '=' + value + '\n')
+          PY
+      - name: Test, lint and build signed release
+        working-directory: launcher
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease
+      - name: Verify signature and prepare assets
+        run: |
+          mkdir -p dist
+          cp launcher/app/build/outputs/apk/release/app-release.apk "dist/tv-vibehack-xiaomi-${RELEASE_TAG}.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "dist/tv-vibehack-xiaomi-${RELEASE_TAG}.apk" > dist/signing-certificate.txt
+          cd dist
+          sha256sum "tv-vibehack-xiaomi-${RELEASE_TAG}.apk" > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed-release-apk
+          path: dist/*
+          if-no-files-found: error
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "小米电视桌面 $RELEASE_TAG" \
+            --notes-file docs/release-notes.md
+      - name: Remove private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/tv-release.p12"
