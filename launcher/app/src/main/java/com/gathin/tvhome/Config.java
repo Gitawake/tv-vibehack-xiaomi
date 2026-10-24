@@ -175,8 +175,6 @@ final class Config {
     final String wallpaperOrder;
     /** Whether the overlay file was present and parsed. */
     final boolean overlayApplied;
-    /** Festive skin from a theme (festival, festival_until, greeting, accent_color); {@link Festival#NONE} if none. */
-    final Festival festival;
     /** F1 weekends from a theme's race_calendar (see RaceWeekend); empty when the theme has none. */
     final List<RaceWeekend.Race> raceCalendar;
     /** Cinematic top shelf (config.xml, cinematic_home): the focused dock app's artwork behind a larger shelf. */
@@ -246,7 +244,7 @@ final class Config {
                    boolean showHomeSettingsShortcut, boolean showStats, boolean appLibrary, boolean appLibrarySelection, boolean uniformTiles, int backgroundColor, int skyIntensity,
                    int[] settingsKeycodes, boolean settingsKeyPanel, boolean restoreKeyServices, boolean wallpaperEnabled, File wallpaper, List<File> wallpapers,
                    int wallpaperRotationMinutes, int wallpaperDim, int dockOpacity, String wallpaperOrder, boolean overlayApplied,
-                   Festival festival, int[] inputKeycodes, List<String> appKeys, String stockHomeRedirect,
+                   int[] inputKeycodes, List<String> appKeys, String stockHomeRedirect,
                    List<RaceWeekend.Race> raceCalendar, boolean cinematicHome, boolean ambientGlow, boolean appGlow, boolean fadeRows, int homeIdleClockMinutes,
                    boolean keyFilter, boolean dockGlass, String glowStyle, boolean wallpaperCaptions,
                    boolean handleViewInputs, boolean tileMenu, boolean dockEvenPadding, boolean cinematicDots, boolean cinematicWhiteFocus, boolean wifiStatusColor, int cinematicScrim, int cinematicArt,
@@ -318,7 +316,6 @@ final class Config {
         this.dockOpacity = dockOpacity;
         this.wallpaperOrder = wallpaperOrder;
         this.overlayApplied = overlayApplied;
-        this.festival = festival;
         this.raceCalendar = Collections.unmodifiableList(raceCalendar);
         this.cinematicHome = cinematicHome;
         this.ambientGlow = ambientGlow;
@@ -593,9 +590,6 @@ final class Config {
             wallpaper = chosen.isEmpty() ? null : chosen.get(0);
             wallpaperEnabled = !chosen.isEmpty();
         }
-        // A festive skin comes only from a theme; config.xml has no festival.
-        Festival festival = json == null ? Festival.NONE : Festival.parse(string(json, "festival", ""),
-                string(json, "festival_until", ""), string(json, "greeting", ""), string(json, "accent_color", ""));
 
         return new Config(dock, fillDock, hidden, libraryApps, liveTv, liveTvAction, liveTvInputId, packageMap(launchActions), packageMap(appLabels),
                 packageMap(appBanners), panelService,
@@ -604,7 +598,7 @@ final class Config {
                 shamsi, greetingName, moduleCards, reducedMotion, bootToLiveTv, openOnStartChoice, dockTitle, dockRow, topMenu, launcherSettingsButton, reorderButton, showNetworkPill, showInputsPill, iconOnlyButtons, iconOnlyInputs, libraryButton, wifiLabelWidth, alwaysShowNames, wallpaperTrueColor, focusOvershoot, vpn, homeSettings, showStats, library, librarySelection, uniformTiles, background,
                 Math.max(0, Math.min(100, skyIntensity)), settingsKeycodes, settingsKeyPanel, restoreKeyServices, wallpaperEnabled, wallpaper,
                 wallpapers, rotationMinutes, wallpaperDim, dockOpacity, wallpaperOrder, applied,
-                festival, inputKeycodes, appKeys, stockHomeRedirect, json == null ? Collections.emptyList() : raceCalendar(json), cinematic, ambientGlow, appGlow, fadeRows,
+                inputKeycodes, appKeys, stockHomeRedirect, json == null ? Collections.emptyList() : raceCalendar(json), cinematic, ambientGlow, appGlow, fadeRows,
                 Math.max(0, idleClockMinutes), keyFilter, dockGlass, glowStyle, wallpaperCaptions, handleViewInputs, tileMenu, dockEvenPadding, cinematicDots, cinematicWhiteFocus, wifiStatusColor, cinematicScrim, cinematicArt, wallpaperMoods, gamepadPassthrough, consumeVolumeKeys, wifiStatusWarnings, topBarApps, showGreeting, headerWhite, clockWallpaper, Math.max(0, Math.min(90, clockWallpaperDim)), clockGlow, glassStyle, singleRow && dockRow, dockBandAll, lunar, lunarOffset);
     }
 

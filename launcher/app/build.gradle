@@ -11,8 +11,8 @@ android {
         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
         minSdk 26
         targetSdk 34
-        versionCode 14
-        versionName '2.7-xiaomi.1'
+        versionCode 15
+        versionName '2.7-xiaomi.2'
     }
 
     signingConfigs {

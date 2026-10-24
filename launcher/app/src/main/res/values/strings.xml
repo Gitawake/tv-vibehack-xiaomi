@@ -14,8 +14,6 @@
     <string name="good_afternoon">Good afternoon</string>
     <string name="good_evening">Good evening</string>
     <string name="good_night">Good night</string>
-    <string name="festival_dussehra_greeting">Happy Dussehra</string>
-    <string name="festival_diwali_greeting">Happy Diwali</string>
     <string name="ethernet">Ethernet</string>
     <string name="offline">Offline</string>
     <string name="not_available">Not available on this TV</string>
@@ -93,12 +91,6 @@
     <string name="card_state_new">New</string>
     <string name="card_state_new_key">New key</string>
     <string name="card_state_new_label">New name</string>
-    <string name="dock_edit">Edit dock</string>
-    <string name="dock_edit_hint">Choose the dock place to change and press OK. Back to finish.</string>
-    <string name="dock_edit_pick_app">Now choose the app to put there and press OK. Back to choose another place.</string>
-    <string name="tile_add_to_dock">Add to dock</string>
-    <string name="tile_replace_in_dock">Replace with another app</string>
-    <string name="dock_edit_pick_place">Choose the dock place for this app and press OK. Back to cancel.</string>
     <string name="reorder">Reorder apps</string>
     <string name="tile_move">Move</string>
     <string name="reorder_hint">OK picks up an app, arrows move it, Back places it. Back again to finish.</string>

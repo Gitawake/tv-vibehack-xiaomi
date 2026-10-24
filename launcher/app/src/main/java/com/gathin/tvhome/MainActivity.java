@@ -225,15 +225,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private boolean singleRow;
     /** The highlight springs past its target (config.xml, focus_overshoot); false goes straight there. */
     private boolean focusOvershoot;
-    /** Festive skin from the theme (see Festival); applied while it is active today. */
-    private Festival festival = Festival.NONE;
-    private boolean festive;
-    private DiyaDrawable diya;
-    private BellDrawable bell;
-    private MarigoldDrawable marigold;
     private int greetingColor;
-    /** The day the petal shower last played, so it greets the first Home of each day only. */
-    private static LocalDate lastPetalShower;
     /** boot_to_live_tv: open the Live TV app on the first Home of each boot. */
     private boolean bootToLiveTv;
     /** open_on_start_choice: the app picked in Launcher settings may open on the first Home of each boot. */
@@ -276,12 +268,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private List<String> dockApps;
     /** fill_dock false: the dock can have empty slots, which reorder mode leaves out and restores afterwards. */
     private boolean fillDockLeavesSlots;
-    /** Edit-dock mode (Settings menu): a reorder session that swaps one chosen app into one dock place. */
-    private boolean dockEditing;
-    /** Dock place being changed in edit-dock mode, or -1 while the place is still being chosen. */
-    private int dockEditSlot = -1;
-    /** Tile menu's "Add to dock": the app waiting for a dock place in edit-dock mode, or null. */
-    private String dockEditAppKey;
     private AppLibraryDialog appLibrary;
     private boolean appLibrarySelection;
     private boolean libraryFocusPending;
@@ -361,9 +347,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         public void run() {
             updateGreeting();
             updateRace();
-            // The pill follows the network callbacks and each return to Home; only the diya's flame follows the
-            // signal level, so only it needs this minute's binder calls (about 7 ms on the UI thread).
-            if (festive) updateWifiLabel();
             sky.update();
             wallpaperPlayer.update();
             handler.postDelayed(this, MINUTE_MS);
@@ -392,8 +375,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         dockRow = cfg.dockRow;
         singleRow = cfg.singleRow;
         focusOvershoot = cfg.focusOvershoot;
-        festival = cfg.festival;
-        festive = festival.active(LocalDate.now());
         liveTvPkg = cfg.liveTvPackage;
         idleClockMs = cfg.homeIdleClockMinutes * MINUTE_MS;
         bootToLiveTv = cfg.bootToLiveTv;
@@ -420,7 +401,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         sky.setIntensity(cfg.skyIntensity);
         glass = findViewById(R.id.glass);
         glass.setStyle(cfg.glassStyle);
-        if (festive) glass.setAccent(festival.accentColor());
         ambient = findViewById(R.id.ambient);
         // The glow is one bitmap, so its alpha can be applied while drawing it. Otherwise every frame of
         // a fade renders it into a full-screen offscreen buffer first.
@@ -631,7 +611,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
-                if (!glassShown) return;
+                if (!glassShown) { return; }
                 glassTargetY -= dy;
                 glassScrollShift -= dy;
                 glass.setTranslationY(glass.getTranslationY() - dy);
@@ -783,7 +763,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         .setDuration(reducedMotion ? Motion.REDUCED_MS : 160).start());
             }
         }
-        if (festive) applyFestiveSkin((TextView) btnInputs, (TextView) btnSettings);
 
         // Hide the glass when focus leaves the tiles.
         getWindow().getDecorView().getViewTreeObserver().addOnGlobalFocusChangeListener((oldF, newF) -> {
@@ -910,11 +889,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
-        // A festival that started or ended while Home was in the background: rebuild with or without it.
-        if (festive != festival.active(LocalDate.now())) {
-            recreate();
-            return;
-        }
         // Something changed in Launcher settings: rebuild with it, however the settings were left. Only Back
         // delivered their RESULT_OK; Home (the remote's button) clears them off this task and the result comes
         // back cancelled, so a new wallpaper or layout waited for the next process start.
@@ -956,14 +930,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         sky.update();
         wallpaperPlayer.start();
         handler.postDelayed(minuteTick, MINUTE_MS);
-        if (festive && diya != null) {
-            diya.start();
-            LocalDate today = LocalDate.now();
-            if (!reducedMotion && !today.equals(lastPetalShower)) {
-                lastPetalShower = today;
-                handler.postDelayed(this::playPetalShower, 450);
-            }
-        }
+
     }
 
     /** Launcher settings' change count (Config.SETTINGS_REVISION_KEY); onResume rebuilds Home when it moved. */
@@ -1130,7 +1097,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         heroArt.animate().cancel();
         handler.removeCallbacks(minuteTick);
         stopStats();
-        if (diya != null) diya.stop();
         cancelPendingFocusScroll();
         // Nothing of ours stays on screen over another app; an undecided prompt simply returns next time.
         if (cardPrompt != null) cardPrompt.dismiss();
@@ -1239,7 +1205,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         }
         if (!reordering) return super.dispatchKeyEvent(event);
-        if (dockEditing) return dispatchDockEdit(event);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         int code = event.getKeyCode();
         boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
@@ -1302,7 +1267,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         Toast.makeText(this, R.string.reorder_hint, Toast.LENGTH_LONG).show();
     }
 
-    /** The start shared by reorder and edit-dock mode. False when there is nothing to move. */
+    /** Starts reorder mode. False when there is nothing to move. */
     private boolean beginReorder() {
         if (adapter.movableCount() < 2) return false;
         // Before the reload below: once it has dropped the empty slots, the dock row also shows grid apps.
@@ -1317,107 +1282,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnReorder.setVisibility(View.VISIBLE);
         btnReorder.setActivated(true);
         return true;
-    }
-
-    /** Edit dock (Settings menu): focus goes to the first dock place, which OK then chooses. */
-    private void startDockEdit() {
-        if (reordering) endReorder();
-        if (!beginReorder()) return;
-        dockEditing = true;
-        dockEditSlot = -1;
-        focusTile(0);
-        Toast.makeText(this, R.string.dock_edit_hint, Toast.LENGTH_LONG).show();
-    }
-
-    /**
-     * Keys in edit-dock mode. First OK on a dock tile chooses that place (the other dock tiles dim) and focus moves
-     * to the grid; then OK on any tile swaps that app into the place, saves the order and ends the mode. Back goes
-     * one step back: from choosing the app to choosing the place, and from there out of the mode.
-     */
-    private boolean dispatchDockEdit(KeyEvent event) {
-        boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
-        int code = event.getKeyCode();
-        boolean ok = code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER
-                || code == KeyEvent.KEYCODE_NUMPAD_ENTER;
-        boolean back = code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE;
-        if (back) {
-            if (!down) {
-                if (dockEditAppKey != null) {
-                    endReorder();   // "Add to dock" cancelled before a place was chosen
-                } else if (dockEditSlot >= 0) {
-                    int slot = dockEditSlot;
-                    dockEditSlot = -1;
-                    dimOthers();
-                    focusTile(slot);
-                } else {
-                    endReorder();
-                }
-            }
-            return true;
-        }
-        int pos = focusedTilePosition();
-        if (ok && pos >= 0) {
-            if (!down) {
-                int n = adapter.movableCount();
-                if (dockEditAppKey != null) {
-                    if (pos < Math.min(COLUMNS, n)) {
-                        int from = adapter.positionOf(dockEditAppKey);
-                        if (from >= 0) swapIntoDock(pos, from);
-                        else endReorder();
-                    }
-                } else if (dockEditSlot < 0) {
-                    if (pos < Math.min(COLUMNS, n)) {
-                        dockEditSlot = pos;
-                        dimOthers();
-                        focusTile(Math.min(COLUMNS, n - 1));
-                        Toast.makeText(this, R.string.dock_edit_pick_app, Toast.LENGTH_LONG).show();
-                    }
-                } else if (pos < n) {
-                    swapIntoDock(dockEditSlot, pos);
-                }
-            }
-            return true;   // never opens the app while editing
-        }
-        return super.dispatchKeyEvent(event);   // arrows navigate as usual
-    }
-
-    /**
-     * Edit-dock mode started from the tile menu. A dock app: its place is already chosen, so focus goes to the grid
-     * for the app to put there. A grid app: it is already chosen, so focus goes to the dock for the place.
-     */
-    private void startDockEditFor(String key, boolean inDock) {
-        if (reordering) endReorder();
-        if (!beginReorder()) return;
-        dockEditing = true;
-        int pos = adapter.positionOf(key);   // beginReorder can rebuild the tiles
-        int n = adapter.movableCount();
-        if (pos < 0) {
-            endReorder();
-        } else if (inDock) {
-            dockEditSlot = pos;
-            dimOthers();
-            focusTile(Math.min(COLUMNS, n - 1));
-            Toast.makeText(this, R.string.dock_edit_pick_app, Toast.LENGTH_LONG).show();
-        } else {
-            dockEditAppKey = key;
-            focusTile(0);
-            Toast.makeText(this, R.string.dock_edit_pick_place, Toast.LENGTH_LONG).show();
-        }
-    }
-
-    /** Puts the app at pos into dock place slot, and the app that was there where the chosen one was; then saves. */
-    private void swapIntoDock(int slot, int pos) {
-        String slotKey = adapter.keyAt(slot);
-        if (pos != slot) {
-            keepScroll(() -> {
-                adapter.move(pos, slot);
-                adapter.move(adapter.positionOf(slotKey), pos);
-            });
-            dockInSession.add(adapter.keyAt(slot));
-            if (pos >= COLUMNS) dockInSession.remove(slotKey);
-        }
-        endReorder();
-        refocusAfterLayout(slot);
     }
 
     private void pickUp(int pos) {
@@ -1440,25 +1304,21 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
     }
 
-    /** A tile's alpha: dim unless it is the carried one, or, in edit-dock mode, a dock tile other than the chosen place. */
+    /** A tile's alpha: dim every tile except the one being moved. */
     private float tileAlpha(int pos) {
         if (movingKey != null) {
             return pos != RecyclerView.NO_POSITION && movingKey.equals(adapter.keyAt(pos)) ? 1f : 0.45f;
         }
-        if (dockEditSlot >= 0 && pos >= 0 && pos < COLUMNS && pos != dockEditSlot) return 0.45f;
         return 1f;
     }
 
     /** Ends the mode and saves the order if it changed since the mode started. */
     private void endReorder() {
         if (!reordering) return;
-        dockEditing = false;
-        dockEditSlot = -1;
-        dockEditAppKey = null;
         drop();
         reordering = false;
         adapter.setReordering(false);
-        glass.setAccent(festive ? festival.accentColor() : 0);
+        glass.setAccent(0);
         btnReorder.setActivated(false);
         if (!showReorderWhenIdle) {
             if (btnReorder.hasFocus()) findViewById(R.id.btnSettings).requestFocus();
@@ -1622,9 +1482,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         glassTargetY = y;
         // Cinematic shelf: the highlight glows in the dock app's colour, plain white in the grid (and on the dock with
         // cinematic_white_focus). app_glow: every tile. In a single row every tile is the dock's kind.
-        boolean coloured = (appGlow || cinematic && !cinematicWhiteFocus && (singleRow || position < COLUMNS)) && !festive;
+        boolean coloured = (appGlow || cinematic && !cinematicWhiteFocus && (singleRow || position < COLUMNS));
         int accent = coloured ? adapter.ambientColorAt(position) : 0;
-        if ((cinematic || appGlow) && !festive && accent != glassAccent) {
+        if ((cinematic || appGlow) && accent != glassAccent) {
             glassAccent = accent;
             glass.setAccent(accent);
         }
@@ -2002,7 +1862,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void hideGlass() {
-        if (!glassShown) return;
+        if (!glassShown) { return; }
         glassShown = false;
         glass.animate().cancel();
         if (animations && !reducedMotion) glass.animate().alpha(0f).setDuration(160).start();
@@ -2440,15 +2300,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else if (hour < 22) res = R.string.good_evening;
             else res = R.string.good_night;
         }
-        String festiveGreeting = festive ? festival.greetingText(getResources()) : "";
-        if (!festiveGreeting.isEmpty()) {
-            greeting.setText(festiveGreeting);
-            greeting.setTextColor(liftTowardsWhite(festival.accentColor(), 0.25f));
-        } else {
-            greeting.setText(greetingName.isEmpty() ? getString(res)
-                    : getString(R.string.greeting_with_name, getString(res), greetingName));
-            greeting.setTextColor(greetingColor);
-        }
+        greeting.setText(greetingName.isEmpty() ? getString(res)
+                : getString(R.string.greeting_with_name, getString(res), greetingName));
+        greeting.setTextColor(greetingColor);
         if (shamsi) shamsiDate.setText(Shamsi.today(getResources()));
         if (lunar) lunarDate.setText(Lunar.today(getResources(), lunarOffset));
     }
@@ -2531,9 +2385,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         String text = getString(R.string.wifi);
         boolean vpn = false, online = false, validated = false;
         int icon = R.drawable.ic_wifi;
-        // The diya's flame: 0 is out (offline), 1 to 4 follow the Wi-Fi signal, Ethernet burns steady at 4.
-        int flame = 0;
-        boolean steady = false;
         try {
             ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
             boolean wifi = false, ethernet = false;
@@ -2558,13 +2409,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             } else if (ethernet) {
                 text = getString(R.string.ethernet);
                 icon = R.drawable.ic_ethernet;
-                flame = 4;
-                steady = true;
             } else if (wifi) {
                 WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                 WifiInfo info = wm != null ? wm.getConnectionInfo() : null;
                 String ssid = info != null ? info.getSSID() : null;
-                flame = info != null ? Math.max(1, Math.min(4, WifiManager.calculateSignalLevel(info.getRssi(), 5))) : 3;
+
                 if (ssid != null) {
                     ssid = ssid.replace("\"", "").trim();
                     if (!ssid.isEmpty() && !ssid.contains("unknown") && !ssid.equals("0x")) text = ssid;
@@ -2606,22 +2455,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             btnWifi.setContentDescription(btnWifi.getText());
             btnWifi.setText(null);
         }
-        if (festive && diya != null) {
-            if (online && flame == 0) flame = 3;   // online some other way (cellular, USB tethering)
-            diya.setSteady(steady);
-            diya.setFlame(flame);
-        } else {
-            if (icon != wifiIcon) {
-                wifiIcon = icon;
-                btnWifi.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
-            }
-            ColorStateList tint = online ? wifiOnlineTint : wifiPlainTint;
-            // wifi_status_warnings: orange while connected but not validated (a captive portal), red while offline.
-            if (wifiNoInternetTint != null) tint = !online ? wifiOfflineTint : validated ? wifiOnlineTint : wifiNoInternetTint;
-            if (wifiOnlineTint != null && btnWifi.getCompoundDrawableTintList() != tint) {
-                btnWifi.setCompoundDrawableTintList(tint);
-            }
+        if (icon != wifiIcon) {
+            wifiIcon = icon;
+            btnWifi.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
         }
+        ColorStateList tint = online ? wifiOnlineTint : wifiPlainTint;
+        // wifi_status_warnings: orange while connected but not validated (a captive portal), red while offline.
+        if (wifiNoInternetTint != null) tint = !online ? wifiOfflineTint : validated ? wifiOnlineTint : wifiNoInternetTint;
+        if (wifiOnlineTint != null && btnWifi.getCompoundDrawableTintList() != tint) {
+            btnWifi.setCompoundDrawableTintList(tint);
+        }
+
     }
 
     /** config.xml icon_only_buttons. */
@@ -2651,57 +2495,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         pill.setPaddingRelative(pad, 0, pad, 0);
         pill.setCompoundDrawablePadding(0);
         pill.getLayoutParams().width = Math.round(42 * density);
-    }
-
-    // ---- festive skin ------------------------------------------------------------------------------
-
-    /**
-     * Swaps the pill icons for the festival's: a bell for Inputs that swings when focused, a diya for the
-     * network whose flame follows the connection, and a marigold for Settings that turns when focused.
-     */
-    private void applyFestiveSkin(TextView inputs, TextView settings) {
-        bell = new BellDrawable(density);
-        marigold = new MarigoldDrawable(density);
-        diya = new DiyaDrawable(density);
-        bell.setReducedMotion(reducedMotion);
-        marigold.setReducedMotion(reducedMotion);
-        diya.setReducedMotion(reducedMotion);
-        setFestiveIcon(inputs, bell);
-        setFestiveIcon(btnWifi, diya);
-        setFestiveIcon(settings, marigold);
-        addFocusAction(inputs, bell::ring);
-        addFocusAction(settings, marigold::turn);
-    }
-
-    private static void setFestiveIcon(TextView pill, Drawable icon) {
-        // The pills tint their icons to follow focus; the festive ones keep their own colours.
-        pill.setCompoundDrawableTintList(null);
-        pill.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null);
-    }
-
-    /** Runs {@code action} when the view gains focus, keeping any focus listener it already had. */
-    private static void addFocusAction(View view, Runnable action) {
-        View.OnFocusChangeListener previous = view.getOnFocusChangeListener();
-        view.setOnFocusChangeListener((v, focused) -> {
-            if (previous != null) previous.onFocusChange(v, focused);
-            if (focused) action.run();
-        });
-    }
-
-    private void playPetalShower() {
-        if (isFinishing() || isDestroyed()) return;
-        PetalShowerView shower = new PetalShowerView(this);
-        root.addView(shower, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        shower.play(60, 2200, () -> root.removeView(shower));
-    }
-
-    private static int liftTowardsWhite(int argb, float amount) {
-        int r = (argb >> 16) & 0xFF, g = (argb >> 8) & 0xFF, b = argb & 0xFF;
-        r += (int) ((255 - r) * amount);
-        g += (int) ((255 - g) * amount);
-        b += (int) ((255 - b) * amount);
-        return 0xFF000000 | (r << 16) | (g << 8) | b;
     }
 
     /** The network pill opens the VPN app when one is configured and installed, otherwise Wi-Fi settings. */
@@ -3163,7 +2956,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             });
         }
         if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
-        if (dockRow) addSettingsMenuRow(rows, popup, R.string.dock_edit, this::startDockEdit);
         addSettingsMenuRow(rows, popup, R.string.reorder, this::toggleReorder);
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         popup.setWidth(Math.max((int) (200 * density), panel.getMeasuredWidth()));
@@ -3188,15 +2980,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
         PopupWindow popup = glassPopup(panel, (int) (200 * density));
-        if (dockRow && position < adapter.movableCount()) {
-            boolean inDock = position < COLUMNS;
-            addSettingsMenuRow(rows, popup, inDock ? R.string.tile_replace_in_dock : R.string.tile_add_to_dock,
-                    () -> startDockEditFor(key, inDock));
-        }
         if (position < adapter.movableCount()) addSettingsMenuRow(rows, popup, R.string.tile_move, () -> {
             if (!beginReorder()) return;
             int at = adapter.positionOf(key);   // beginReorder can rebuild the tiles
-            if (at < 0) return;
+            if (at < 0) { return; }
             focusTile(at);
             pickUp(at);
             Toast.makeText(this, R.string.reorder_hint, Toast.LENGTH_LONG).show();
@@ -3304,7 +3091,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // One decision per prompt: the buttons and Back (cancel) all end here.
         final boolean[] decided = {false};
         View.OnClickListener choose = v -> {
-            if (decided[0]) return;
+            if (decided[0]) { return; }
             decided[0] = true;
             cardPrompt = null;
             dialog.dismiss();
