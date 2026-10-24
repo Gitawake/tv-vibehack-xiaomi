@@ -6,7 +6,7 @@ on:
       tag:
         description: Release tag (must match app version)
         required: true
-        default: v2.4-xiaomi.6
+        default: v2.7-xiaomi.1
 
 permissions:
   contents: read
